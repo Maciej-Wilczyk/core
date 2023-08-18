@@ -1,8 +1,9 @@
 package com.mgr.core.service;
 
+import lombok.Getter;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -12,43 +13,45 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Optional;
 
+import static com.mgr.core.constant.Constant.*;
+
 @Service
 @RequiredArgsConstructor
+@Getter
 public class FileUploaderService {
-
-    private final String tag = "testowy1:tag";
-
-    private final String AWS_ECR_REPOSITORY = "445146526163.dkr.ecr.us-east-1.amazonaws.com";
 
     private final String DOCKERFILE_PATH = "src/main/resources/";
 
     final SimpMessagingTemplate simpMessagingTemplate;
 
+    private boolean isDockerfileBuilt = true;
+
+    @Async
     public void processDockerfileBuild() {
-        simpMessagingTemplate.convertAndSend("/topic/progress", "Process Start");
-        boolean isBuildSuccess = Optional.ofNullable(ClassLoader.getSystemClassLoader().getResource("Dockerfile")).map(url -> {
+//        simpMessagingTemplate.convertAndSend("/topic/progress", "Process Start");
+        isDockerfileBuilt = false;
+        Optional.ofNullable(ClassLoader.getSystemClassLoader().getResource("Dockerfile")).ifPresent(url -> {
             try {
                 ProcessBuilder process = new ProcessBuilder();
 
-                process.command("docker", "build", "-t", tag, "-f", url.toString(), ".")
+                process.command("docker", "build", "-t", TAG, "-f", url.toString(), ".")
                         .start()
                         .waitFor();
 
-                process.command("docker", "tag", tag, AWS_ECR_REPOSITORY + tag)
+                process.command("docker", "tag", TAG, AWS_ECR_REPOSITORY_WITH_TAG)
                         .start()
                         .waitFor();
-                return true;
             } catch (InterruptedException | IOException e) {
                 e.printStackTrace();
-                return false;
             }
-        }).orElse(false);
+        });
 
-        if (isBuildSuccess) {
-            simpMessagingTemplate.convertAndSend("/topic/build", "Process Successfully End");
-        } else {
-            simpMessagingTemplate.convertAndSend("/topic/build", "Process failed");
-        }
+        isDockerfileBuilt = true;
+//        if (isBuildSuccess) {
+//            simpMessagingTemplate.convertAndSend("/topic/build", "Process Successfully End");
+//        } else {
+//            simpMessagingTemplate.convertAndSend("/topic/build", "Process failed");
+//        }
     }
 
     public void processPushDockerfile() throws IOException, InterruptedException {
@@ -57,7 +60,7 @@ public class FileUploaderService {
                 .start()
                 .waitFor();
 
-        process.command("docker", "push", AWS_ECR_REPOSITORY + tag)
+        process.command("docker", "push", AWS_ECR_REPOSITORY_WITH_TAG)
                 .start()
                 .waitFor();
     }

@@ -31,12 +31,18 @@ public class FileUploaderController {
         return ResponseEntity.badRequest().build();
     }
 
-    @GetMapping("/buildDockerfile")
-    public void buildDockerfile() {
+    @PostMapping("/buildDockerfile")
+    public ResponseEntity<String> buildDockerfile() {
         fileUploaderService.processDockerfileBuild();
+        return ResponseEntity.ok("Dockerfile start building");
     }
 
-    @GetMapping("/pushDockerfile")
+    @GetMapping("/buildStatus")
+    public ResponseEntity<Boolean> checkBuildStatus() {
+        return ResponseEntity.ok(fileUploaderService.isDockerfileBuilt());
+    }
+
+    @PostMapping("/pushDockerfile")
     public ResponseEntity<String> pushDockerfile() throws IOException, InterruptedException {
         fileUploaderService.processPushDockerfile();
         return ResponseEntity.ok("Push succeed!");
