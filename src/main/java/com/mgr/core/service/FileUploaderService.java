@@ -2,7 +2,6 @@ package com.mgr.core.service;
 
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -22,13 +21,12 @@ public class FileUploaderService {
 
     private final String DOCKERFILE_PATH = "src/main/resources/";
 
-    final SimpMessagingTemplate simpMessagingTemplate;
+//    final SimpMessagingTemplate simpMessagingTemplate;
 
-    private boolean isDockerfileBuilt = true;
+    private boolean isDockerfileBuilt = false;
 
     @Async
     public void processDockerfileBuild() {
-//        simpMessagingTemplate.convertAndSend("/topic/progress", "Process Start");
         isDockerfileBuilt = false;
         Optional.ofNullable(ClassLoader.getSystemClassLoader().getResource("Dockerfile")).ifPresent(url -> {
             try {
@@ -45,13 +43,7 @@ public class FileUploaderService {
                 e.printStackTrace();
             }
         });
-
         isDockerfileBuilt = true;
-//        if (isBuildSuccess) {
-//            simpMessagingTemplate.convertAndSend("/topic/build", "Process Successfully End");
-//        } else {
-//            simpMessagingTemplate.convertAndSend("/topic/build", "Process failed");
-//        }
     }
 
     public void processPushDockerfile() throws IOException, InterruptedException {

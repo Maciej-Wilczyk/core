@@ -2,7 +2,6 @@ package com.mgr.core.controller;
 
 import com.mgr.core.service.FileUploaderService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -10,10 +9,6 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.Optional;
 
 @RestController
 @RequestMapping("/api")
@@ -22,33 +17,34 @@ public class FileUploaderController {
 
     private final FileUploaderService fileUploaderService;
 
-    @PostMapping(path = "/dockerfile", consumes = {MediaType.MULTIPART_FORM_DATA_VALUE})
-    public ResponseEntity<String> setDockerFile(@RequestPart MultipartFile dockerFile) throws IOException {
+    @PostMapping(path = "/dockerfile", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<?> setDockerFile(@RequestPart MultipartFile dockerFile) throws IOException {
         if (!dockerFile.isEmpty()) {
             fileUploaderService.saveDockerfile(dockerFile);
-            return ResponseEntity.ok("Dockerfile saved!");
+            return ResponseEntity.ok().build();
         }
         return ResponseEntity.badRequest().build();
     }
 
-    @PostMapping("/buildDockerfile")
-    public ResponseEntity<String> buildDockerfile() {
+    @PostMapping(path = "/buildDockerfile")
+    public ResponseEntity<?> buildDockerfile() {
         fileUploaderService.processDockerfileBuild();
-        return ResponseEntity.ok("Dockerfile start building");
+        return ResponseEntity.ok().build();
     }
 
-    @GetMapping("/buildStatus")
-    public ResponseEntity<Boolean> checkBuildStatus() {
-        return ResponseEntity.ok(fileUploaderService.isDockerfileBuilt());
+    @GetMapping(path = "/buildStatus")
+    public ResponseEntity<?> checkBuildStatus() {
+        return fileUploaderService.isDockerfileBuilt()
+                ? ResponseEntity.ok().build() : ResponseEntity.status(HttpStatus.ACCEPTED).build();
     }
 
-    @PostMapping("/pushDockerfile")
-    public ResponseEntity<String> pushDockerfile() throws IOException, InterruptedException {
+    @PostMapping(path = "/pushDockerfile")
+    public ResponseEntity<?> pushDockerfile() throws IOException, InterruptedException {
         fileUploaderService.processPushDockerfile();
-        return ResponseEntity.ok("Push succeed!");
+        return ResponseEntity.ok().build();
     }
 
-    @GetMapping("/health")
+    @GetMapping(path = "/health", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<String> health() {
         return ResponseEntity.ok("health!");
     }
