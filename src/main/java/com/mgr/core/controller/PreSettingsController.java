@@ -13,13 +13,12 @@ import org.springframework.web.bind.annotation.RestController;
 import java.io.IOException;
 
 @RestController
-@RequestMapping("/credentialsAndEc2Ip")
 @RequiredArgsConstructor
-public class CredentialsController {
+public class PreSettingsController {
 
     private final EC2InstanceManagementService ec2InstanceManagementService;
 
-    @PostMapping(consumes = {MediaType.APPLICATION_JSON_VALUE})
+    @PostMapping(path = "/credentialsAndEc2Ip", consumes = {MediaType.APPLICATION_JSON_VALUE})
     public ResponseEntity<String> setCredentialsAndEc2Ip(@RequestBody CredentialsAndEc2Ip credentialsAndEc2Ip) {
         try {
             ProcessBuilder process = new ProcessBuilder();
@@ -48,4 +47,21 @@ public class CredentialsController {
         }
         return ResponseEntity.ok("credentials and ec2 ip set");
     }
+    @PostMapping("/dockerStart")
+    public ResponseEntity<String> startDockerServer() {
+        try {
+            ProcessBuilder process = new ProcessBuilder();
+            process.command("sudo", "service", "docker", "start")
+                    .start()
+                    .waitFor();
+            process.command("sudo", "usermod", "-a", "-G", "docker", "ec2-user")
+                    .start()
+                    .waitFor();
+        } catch (IOException | InterruptedException e) {
+            e.printStackTrace();
+            return ResponseEntity.internalServerError().build();
+        }
+        return ResponseEntity.ok("docker starting");
+    }
+
 }

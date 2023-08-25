@@ -19,6 +19,7 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Base64;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -63,13 +64,13 @@ public class EC2InstanceManagementService {
                         "aws s3 cp " + instanceType + "_setup_time.txt s3://test-s3-sum/" + BENCHMARK + "/setup/\n" +
                         "aws s3 cp " + instanceType + "_task_time.txt s3://test-s3-sum/" + BENCHMARK + "/task/\n" +
                         "aws s3 cp " + instanceType + "_launch_time.txt s3://test-s3-sum/" + BENCHMARK + "/launch/\n" +
-                        "curl -X POST http://" + this.ec2PublicIp + ":8080/" + BENCHMARK + "/results/" + instanceType
+                        "curl -X POST http://" + this.ec2PublicIp + ":8080/api/" + BENCHMARK + "/results/" + instanceType
                 :
                 "aws s3 cp " + instanceType + "_result.txt s3://test-s3-sum/" + FINAL + "/result/\n" +
                         "aws s3 cp " + instanceType + "_setup_time.txt s3://test-s3-sum/" + FINAL + "/setup/\n" +
                         "aws s3 cp " + instanceType + "_task_time.txt s3://test-s3-sum/" + FINAL + "/task/\n" +
                         "aws s3 cp " + instanceType + "_launch_time.txt s3://test-s3-sum/" + FINAL + "/launch/\n" +
-                        "curl -X POST http://" + this.ec2PublicIp + ":8080/" + FINAL + "/results/" + instanceType;
+                        "curl -X POST http://" + this.ec2PublicIp + ":8080/api/" + FINAL + "/results/" + instanceType;
 
         String userDataScript = "#!/bin/bash\n" +
                 "date > " + instanceType + "_launch_time.txt\n" +
@@ -80,7 +81,7 @@ public class EC2InstanceManagementService {
                 "date > " + instanceType + "_setup_time.txt\n" +
                 "aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 445146526163.dkr.ecr.us-east-1.amazonaws.com\n" +
                 "docker pull " + AWS_ECR_REPOSITORY_WITH_TAG + "\n" +
-                "docker run " + AWS_ECR_REPOSITORY_WITH_TAG + " > result.txt" + "\n" +
+                "docker run " + AWS_ECR_REPOSITORY_WITH_TAG + " >" + instanceType + "_result.txt" + "\n" +
                 "date > " + instanceType + "_task_time.txt\n" +
                 endPartOfScript;
 
@@ -109,12 +110,12 @@ public class EC2InstanceManagementService {
     public void fetchResultAndTerminate(final String instanceType, final boolean isBenchmark) {
         terminateInstance(instanceType);
         //result
-        String result = getResult(instanceType);
         String rootDirectoryName = isBenchmark ? BENCHMARK : FINAL;
+        String result = getResult(rootDirectoryName + "/result/" + instanceType + "_result.txt");
         //duration
-        LocalDateTime setupTime = getTimeString(rootDirectoryName + "setup/" + instanceType + "_setup_time.txt");
-        LocalDateTime taskTime = getTimeString(rootDirectoryName + "task/" + instanceType + "_task_time.txt");
-        LocalDateTime launchTime = getTimeString(rootDirectoryName + "launch/" + instanceType + "_launch_time.txt");
+        LocalDateTime setupTime = getTimeString(rootDirectoryName + "/setup/" + instanceType + "_setup_time.txt");
+        LocalDateTime taskTime = getTimeString(rootDirectoryName + "/task/" + instanceType + "_task_time.txt");
+        LocalDateTime launchTime = getTimeString(rootDirectoryName + "/launch/" + instanceType + "_launch_time.txt");
         Duration setupDuration = Duration.between(launchTime, setupTime);
         Duration taskDuration = Duration.between(setupTime, taskTime);
         InstanceType instanceTypeEnum = InstanceType.fromString(instanceType);
@@ -125,24 +126,30 @@ public class EC2InstanceManagementService {
             this.resultMapBenchmark.put(instanceType, new ResultBenchmark(result, setupDuration.getSeconds(),
                     taskDuration.getSeconds(), estimatedTime, estimatedCost, instanceTypeEnum));
         } else {
-            double cost = taskDuration.toSeconds() * InstanceType.fromString(instanceType).getCostPerHour();
+            double cost = taskDuration.toSeconds() / 3600. * InstanceType.fromString(instanceType).getCostPerHour();
             this.resultFinal = new ResultFinal(result, setupDuration.getSeconds(),
                     taskDuration.getSeconds(), instanceTypeEnum, cost);
         }
     }
 
+
+
     private void terminateInstance(String instanceType) {
+        this.ec2 = Ec2Client.builder()
+                .credentialsProvider(DefaultCredentialsProvider.create())
+                .region(Region.US_EAST_1)
+                .build();
         DescribeInstancesRequest describeInstancesRequest = DescribeInstancesRequest.builder()
                 .filters(Filter.builder()
                         .name("tag:Name")
                         .values(instanceType)
                         .build())
                 .build();
-
         String instanceId = this.ec2.describeInstances(describeInstancesRequest)
-                .reservations()
-                .get(0).instances()
-                .get(0).instanceId();
+                .reservations().stream().flatMap(v-> v.instances()
+                .stream()).filter(e-> e.state().code() == 16).findFirst().map(Instance::instanceId).orElseThrow();
+
+        System.out.println("InstanceId:" + instanceId);
 
         TerminateInstancesRequest terminateInstancesRequest = TerminateInstancesRequest.builder()
                 .instanceIds(instanceId)
@@ -151,10 +158,10 @@ public class EC2InstanceManagementService {
         this.ec2.terminateInstances(terminateInstancesRequest);
     }
 
-    private String getResult(final String instanceType) {
+    private String getResult(final String key) {
         GetObjectRequest getObjectRequest = GetObjectRequest.builder()
                 .bucket("test-s3-sum")
-                .key("result/" + instanceType + "_result.txt")
+                .key(key)
                 .build();
         return new String(this.s3Client.getObjectAsBytes(getObjectRequest).asByteArray(), StandardCharsets.UTF_8);
     }
@@ -164,9 +171,10 @@ public class EC2InstanceManagementService {
                 .bucket("test-s3-sum")
                 .key(key)
                 .build();
-        String timeString = new String(this.s3Client.getObjectAsBytes(getObjectRequest).asByteArray(), StandardCharsets.UTF_8);
+        String timeString = new String(this.s3Client.getObjectAsBytes(getObjectRequest).asByteArray(), StandardCharsets.UTF_8)
+                .replaceAll("\\n", "");
 
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("EEE MMM dd HH:mm:ss zzz yyyy", Locale.ENGLISH);
         return LocalDateTime.parse(timeString, formatter);
     }
 }
